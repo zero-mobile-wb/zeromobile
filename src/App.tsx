@@ -41,6 +41,9 @@ function App() {
           onClick={() => window.location.reload()}
           className="px-8 py-3 bg-white text-black rounded-xl font-semibold hover:bg-gray-200 transition-colors"
         >
+
+
+
           Retry Connection
         </button>
       </div>
