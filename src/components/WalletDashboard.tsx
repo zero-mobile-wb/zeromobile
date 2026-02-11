@@ -10,7 +10,6 @@ import SendModal from './SendModal'
 import ReceiveModal from './ReceiveModal'
 import Settings from './Settings'
 import Portfolio from './Portfolio'
-import AfriexBanking from './AfriexBanking'
 
 // RPC Configuration with failover
 const RPC_URLS = [
@@ -598,11 +597,6 @@ export default function WalletDashboard() {
                       )}
                     </div>
                   </div>
-                </div>
-
-                {/* RIGHT COLUMN - 40%: Afriex Banking */}
-                <div className="flex flex-col h-full">
-                  <AfriexBanking />
                 </div>
               </div>
 
