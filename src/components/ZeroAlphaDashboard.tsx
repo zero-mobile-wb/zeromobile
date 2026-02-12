@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { Mail, Lock, Trophy, Star, TrendingUp, Calendar, Loader2, LogOut } from 'lucide-react'
 
-const serverurl = process.env.VITE_API_URL
+const serverurl = import.meta.env.VITE_API_URL
 
 const BACKEND_URL = serverurl
 const STORAGE_KEY = 'zeroalpha_auth_email'

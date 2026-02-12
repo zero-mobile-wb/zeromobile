@@ -8,10 +8,10 @@
       "config": { "outputDirectory": "dist" }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
