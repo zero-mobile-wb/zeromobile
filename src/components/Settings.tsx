@@ -1,164 +1,330 @@
-import { useState } from 'react'
-import { usePrivy } from '@privy-io/react-auth'
-import { useWallets, useExportWallet } from '@privy-io/react-auth/solana'
-import { User, Key, Copy, Mail, Wallet as WalletIcon, CheckCircle, AlertCircle, LogOut, ShieldCheck, ChevronRight, Sun, Moon } from 'lucide-react'
-import { useTheme } from '../context/ThemeContext'
+import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { User, Key, Copy, Mail, Globe, CheckCircle, AlertCircle, LogOut, Check } from 'lucide-react'
+
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function Settings() {
-    const { user, logout } = usePrivy()
-    const { wallets } = useWallets()
-    const { exportWallet } = useExportWallet()
-    const { theme, toggleTheme } = useTheme()
+    const { user, logout } = useAuth()
 
-    const [loading, setLoading] = useState(false)
     const [copied, setCopied] = useState(false)
+    const [name, setName] = useState('')
+    const [country, setCountry] = useState('')
+    const [saving, setSaving] = useState(false)
+    const [saveSuccess, setSaveSuccess] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [showPk, setShowPk] = useState(false)
 
-    const solanaWallet = wallets[0]
+    const walletAddress = user?.walletAddress || 'pending_sss'
+    const [privateKey, setPrivateKey] = useState<string | null>(user?.privateKey || null)
+    const [otp, setOtp] = useState('')
+    const [requestingOtp, setRequestingOtp] = useState(false)
+    const [verifyingOtp, setVerifyingOtp] = useState(false)
+    const [showOtpInput, setShowOtpInput] = useState(false)
+    const [exportedKey, setExportedKey] = useState<string | null>(null)
 
-    const handleExportPrivateKey = async () => {
-        if (!solanaWallet) return
-        setLoading(true)
+    const handleRequestOtp = async () => {
+        if (!user?.email) return
+        setRequestingOtp(true)
         setError(null)
         try {
-            await exportWallet({ address: solanaWallet.address })
+            const res = await fetch(`${BACKEND_URL}/api/zero/wallet/export/request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: user.email })
+            })
+            if (!res.ok) throw new Error('Failed to request OTP')
+            setShowOtpInput(true)
         } catch (err: any) {
-            console.error('Error exporting private key:', err)
-            setError(err.message || 'Failed to export private key')
+            setError(err.message)
         } finally {
-            setLoading(false)
+            setRequestingOtp(false)
         }
     }
 
+    const handleVerifyOtp = async () => {
+        if (!user?.email || !otp) return
+        setVerifyingOtp(true)
+        setError(null)
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/zero/wallet/export/full`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: user.email, otp })
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Verification failed')
+            setExportedKey(data.privateKey)
+            setShowOtpInput(false)
+            setShowPk(true)
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setVerifyingOtp(false)
+        }
+    }
+
+    useEffect(() => {
+        if (user) {
+            setName(user.name || '')
+            setCountry(user.country || '')
+        }
+    }, [user])
+
     const handleCopyAddress = () => {
-        if (solanaWallet) {
-            navigator.clipboard.writeText(solanaWallet.address)
+        if (walletAddress && walletAddress !== 'pending_sss') {
+            navigator.clipboard.writeText(walletAddress)
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
         }
     }
 
+    const handleSaveProfile = async () => {
+        if (!user?.email) return
+        setSaving(true)
+        setError(null)
+        setSaveSuccess(false)
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/zero/user/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: user.email,
+                    name,
+                    country
+                })
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to update profile')
+
+            setSaveSuccess(true)
+            setTimeout(() => setSaveSuccess(false), 3000)
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const hasChanges = (name !== (user?.name || '')) || (country !== (user?.country || ''))
+
     return (
-        <div className="w-full space-y-10 px-3 md:px-30 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Header */}
-            <div className="flex items-center justify-between px-2">
-                <div>
-                    <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter mb-2 uppercase">Settings</h1>
-                    <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-widest">Global Terminal Preferences</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={toggleTheme}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl text-gray-900 dark:text-white transition-all hover:bg-gray-200 dark:hover:bg-white/10 group"
-                    >
-                        {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-                        <span className="text-[10px] font-black uppercase tracking-widest">{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
-                    </button>
-                    <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full">
-                        <ShieldCheck size={14} className="text-green-500" />
-                        <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Secure Link</span>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Profile Card */}
-                <div className="bg-gray-100 dark:bg-white/5 backdrop-blur-2xl border border-gray-200 dark:border-white/10 rounded-3xl p-8 shadow-none dark:shadow-xl space-y-8">
-                    <div className="flex items-center gap-4 border-b border-gray-100 dark:border-white/5 pb-6">
-                        <div className="w-14 h-14 bg-gray-50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-white/10">
-                            <User size={24} className="text-gray-900 dark:text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight uppercase">Identity</h2>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Public Profile Details</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-2xl p-4 group">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-500/10 rounded-lg"><Mail size={16} className="text-blue-500 dark:text-white" /></div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">Contact</span>
-                                        <span className="text-sm font-bold text-gray-900 dark:text-white">{user?.email?.address || 'Anonymous'}</span>
-                                    </div>
-                                </div>
-                                <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
-                            </div>
-                        </div>
-
-                        {solanaWallet && (
-                            <div className="bg-gray-200 dark:bg-white/[0.02] border border-gray-300 dark:border-white/5 rounded-2xl p-4 group">
-                                <div className="flex flex-col gap-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-purple-500/10 rounded-lg"><WalletIcon size={16} className="text-purple-500 dark:text-white" /></div>
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Primary Wallet</span>
-                                        </div>
-                                        <button onClick={handleCopyAddress} className="text-gray-400 hover:text-black dark:hover:text-white transition-colors font-bold">
-                                            {copied ? <CheckCircle size={16} className="text-green-500" /> : <Copy size={16} />}
-                                        </button>
-                                    </div>
-                                    <p className="text-[11px] font-mono text-gray-600 dark:text-gray-400 break-all bg-gray-300 dark:bg-black/20 p-3 rounded-xl border border-gray-400 dark:border-white/5 shadow-inner">
-                                        {solanaWallet.address}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+        <div className="h-full px-5 md:px-8 py-6 md:py-10 overflow-y-auto bg-white">
+            <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-700">
+                {/* Header */}
+                <div className="flex flex-col gap-2 pb-6 border-b border-[#e5e7eb]">
+                    <h1 className="text-4xl font-black text-black tracking-tighter uppercase">Settings</h1>
+                    <p className="text-[#6b7280] text-[11px] font-black uppercase tracking-[0.2em]">Global Account Configuration</p>
                 </div>
 
-                {/* Security Card */}
-                <div className="bg-gray-100 dark:bg-white/5 backdrop-blur-2xl border border-gray-200 dark:border-white/10 rounded-3xl p-8 shadow-none dark:shadow-xl flex flex-col justify-between">
-                    <div className="space-y-8">
-                        <div className="flex items-center gap-4 border-b border-gray-100 dark:border-white/5 pb-6">
-                            <div className="w-14 h-14 bg-gray-50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-white/10">
-                                <Key size={24} className="text-gray-900 dark:text-white" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Identity Details */}
+                    <div className="bg-white border border-[#e5e7eb] rounded-3xl p-8 shadow-sm space-y-8 flex flex-col">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-[#fafafa] border border-[#e5e7eb] rounded-2xl flex items-center justify-center">
+                                <User size={22} className="text-black" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight uppercase">Security</h2>
-                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Key Management</p>
+                                <h2 className="text-lg font-black text-black tracking-tight uppercase leading-none">Identity</h2>
+                                <p className="text-[10px] text-[#6b7280] font-bold uppercase tracking-widest mt-1">Public profile details</p>
                             </div>
                         </div>
 
-                        <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-2xl p-5">
-                            <div className="flex items-start gap-4">
-                                <AlertCircle size={20} className="text-amber-500 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200 mb-1">Backup Requirement</h4>
-                                    <p className="text-[11px] text-amber-700 dark:text-amber-200/60 leading-relaxed font-medium">
-                                        You are in control of your funds. Export your private key to ensure you never lose access.
-                                    </p>
+                        <div className="space-y-6 flex-1">
+                            <div>
+                                <label className="text-[10px] font-black text-[#6b7280] uppercase tracking-[0.2em] mb-2.5 block">
+                                    Contact Email
+                                </label>
+                                <div className="w-full bg-[#fafafa] border border-[#e5e7eb] rounded-2xl px-5 py-4 text-sm font-bold text-black/50 cursor-not-allowed">
+                                    {user?.email || 'ANONYMOUS_SESSION'}
                                 </div>
                             </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-[#6b7280] uppercase tracking-[0.2em] mb-2.5 block">
+                                    Full Identity Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Enter full name"
+                                    className="w-full bg-white border border-[#e5e7eb] focus:border-black outline-none rounded-2xl px-5 py-4 text-sm font-black text-black transition-all placeholder:text-black/20"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-[#6b7280] uppercase tracking-[0.2em] mb-2.5 block">
+                                    Operation Region
+                                </label>
+                                <input
+                                    type="text"
+                                    value={country}
+                                    onChange={(e) => setCountry(e.target.value)}
+                                    placeholder="Enter country"
+                                    className="w-full bg-white border border-[#e5e7eb] focus:border-black outline-none rounded-2xl px-5 py-4 text-sm font-black text-black transition-all placeholder:text-black/20"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="pt-4">
+                            <button
+                                onClick={handleSaveProfile}
+                                disabled={!hasChanges || saving}
+                                className={`w-full py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3
+                                    ${hasChanges
+                                        ? 'bg-black text-white hover:bg-black/90 active:scale-[0.98] shadow-md'
+                                        : 'bg-[#fafafa] text-[#9ca3af] border border-[#e5e7eb] cursor-not-allowed'}`}
+                            >
+                                {saving ? <><Loader2 className="animate-spin" size={14} /> Synchronizing</> : saveSuccess ? <><Check size={14} /> Profile Synchronized</> : 'Sync Profile'}
+                            </button>
                         </div>
                     </div>
 
-                    <div className="mt-8 pt-6 border-t border-gray-100 dark:border-white/5">
+                    {/* Security & Keys */}
+                    <div className="bg-white border border-[#e5e7eb] rounded-3xl p-8 shadow-sm flex flex-col space-y-8">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-[#fafafa] border border-[#e5e7eb] rounded-2xl flex items-center justify-center">
+                                <Key size={22} className="text-black" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-black tracking-tight uppercase leading-none">Security</h2>
+                                <p className="text-[10px] text-[#6b7280] font-bold uppercase tracking-widest mt-1">Key Management Protocol</p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 space-y-6">
+                            <div className="bg-[#fafafa] border border-[#e5e7eb] p-5 rounded-2xl">
+                                <div className="flex items-start gap-4">
+                                    <AlertCircle size={18} className="text-black shrink-0 mt-0.5" />
+                                    <div>
+                                        <h4 className="text-[11px] font-black text-black uppercase tracking-tight mb-1">Key Status: Secure</h4>
+                                        <p className="text-[10px] text-[#6b7280] leading-relaxed font-bold uppercase tracking-tight">
+                                            Your wallet uses a 2/3 Shard Security system. Decryption requires an authorized email confirmation.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Export Section */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Private Key Terminal</label>
+                                    {!exportedKey && !showOtpInput && (
+                                        <button
+                                            onClick={handleRequestOtp}
+                                            disabled={requestingOtp}
+                                            className="text-[10px] font-black text-black hover:underline uppercase tracking-widest disabled:opacity-50"
+                                        >
+                                            {requestingOtp ? 'Sending code...' : 'Request Export'}
+                                        </button>
+                                    )}
+                                    {showOtpInput && (
+                                        <button
+                                            onClick={() => setShowOtpInput(false)}
+                                            className="text-[10px] font-black text-red-500 hover:underline uppercase tracking-widest"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </div>
+
+                                {showOtpInput && (
+                                    <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
+                                        <p className="text-[10px] font-bold text-black uppercase tracking-tight">Enter 6-digit confirmation code:</p>
+                                        <div className="flex gap-3">
+                                            <input
+                                                type="text"
+                                                maxLength={6}
+                                                value={otp}
+                                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                                                placeholder="000 000"
+                                                className="flex-1 bg-[#fafafa] border border-[#e5e7eb] rounded-xl px-5 py-3 text-lg font-mono font-black text-center tracking-[0.5em] focus:border-black outline-none"
+                                            />
+                                            <button
+                                                onClick={handleVerifyOtp}
+                                                disabled={otp.length < 6 || verifyingOtp}
+                                                className="bg-black text-white px-6 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black/90 disabled:opacity-30"
+                                            >
+                                                {verifyingOtp ? <Loader2 className="animate-spin" size={14} /> : 'Unlock'}
+                                            </button>
+                                        </div>
+                                        {error && <p className="text-[9px] font-bold text-red-500 uppercase">{error}</p>}
+                                    </div>
+                                )}
+
+                                {exportedKey ? (
+                                    <div className={`relative transition-all duration-500 rounded-2xl overflow-hidden ${showPk ? 'opacity-100 max-h-40' : 'opacity-40 max-h-12'}`}>
+                                        <div className={`absolute inset-0 bg-black backdrop-blur-md z-10 flex items-center justify-center transition-opacity duration-500 ${showPk ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <Key size={12} className="text-white" />
+                                                <span className="text-[9px] font-black text-white uppercase tracking-[0.3em]">SECURE_REVEAL_SYSTEM</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-black text-white p-5 flex flex-col gap-3">
+                                            <code className="text-[10px] font-mono break-all leading-relaxed tracking-tighter opacity-80">
+                                                {exportedKey}
+                                            </code>
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(exportedKey)
+                                                    setCopied(true)
+                                                    setTimeout(() => setCopied(false), 2000)
+                                                }}
+                                                className="w-full bg-white text-black py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/90 transition-colors"
+                                            >
+                                                {copied ? 'Copied' : 'Copy Master Key'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : !showOtpInput && (
+                                    <div className="bg-[#fafafa] border border-[#e5e7eb] rounded-2xl p-6 text-center">
+                                        <p className="text-[10px] font-black text-[#6b7280] uppercase tracking-widest opacity-50 leading-relaxed">
+                                            Click "Request Export" to receive an authorization code via email.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {showPk && (
+                                    <p className="text-[9px] font-black text-red-500 uppercase tracking-widest flex items-center gap-1.5 animate-pulse">
+                                        <AlertCircle size={10} /> Critical: Never share your private key.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
                         <button
-                            onClick={handleExportPrivateKey}
-                            disabled={loading || !solanaWallet}
-                            className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30 shadow-none dark:shadow-xl"
+                            onClick={handleCopyAddress}
+                            disabled={!walletAddress || walletAddress === 'pending_sss'}
+                            className="w-full group bg-white border border-black text-black py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all hover:bg-black hover:text-white flex items-center justify-center gap-2"
                         >
-                            {loading ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent mx-auto" /> : 'Export Private Key'}
+                            {copied ? <><CheckCircle size={14} /> Synced</> : <><Copy size={14} className="group-hover:scale-110 transition-transform" /> Copy Public Address</>}
                         </button>
-                        {error && <p className="mt-3 text-[10px] font-black text-red-500 uppercase tracking-widest text-center">{error}</p>}
                     </div>
                 </div>
-            </div>
 
-            <div className="bg-gray-100 dark:bg-red-500/5 backdrop-blur-3xl border border-gray-200 dark:border-red-100 dark:border-red-500/10 rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
-                <div className="relative z-10 text-center md:text-left">
-                    <h3 className="text-2xl font-black text-red-600 dark:text-red-400 mb-2 uppercase tracking-tighter">Sign Out</h3>
-                    <p className="text-xs text-red-700 dark:text-red-200/50 font-bold uppercase tracking-widest max-w-md">Terminate session on this device</p>
+                {/* Account Management footer */}
+                <div className="pt-10 border-t border-[#e5e7eb] flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="text-center md:text-left">
+                        <h3 className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em] mb-1">Session Protocol</h3>
+                        <p className="text-[10px] text-black/40 font-bold uppercase tracking-widest">Terminate all active connections to this node</p>
+                    </div>
+                    <button
+                        onClick={logout}
+                        className="px-10 py-4 bg-white border border-red-200 text-red-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-red-50 transition-all active:scale-95 flex items-center gap-3"
+                    >
+                        <LogOut size={16} />
+                        Exit Secure Terminal
+                    </button>
                 </div>
-                <button onClick={logout} className="relative z-10 px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-xl flex items-center gap-3">
-                    <LogOut size={16} />
-                    Terminal Exit
-                </button>
             </div>
             <div className="h-20" />
         </div>
     )
+}
+
+function Loader2({ className, size }: { className?: string, size?: number }) {
+    return <svg className={`animate-spin ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
 }

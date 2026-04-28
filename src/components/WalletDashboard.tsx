@@ -144,7 +144,7 @@ export default function WalletDashboard() {
       try {
         console.log('Fetching prices for mints:', allMints)
         // Updated to V3 using proxy to avoid CORS
-        const priceResponse = await fetch(`/api/jupiter/price/v3?ids=${allMints.join(',')}`, {
+        const priceResponse = await fetch(`https://price.jup.ag/v6/price?ids=${allMints.join(',')}`, {
           headers
         })
 

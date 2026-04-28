@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, AlertCircle, QrCode, Keyboard, ArrowUpRight, CheckCircle2 } from 'lucide-react'
-import { useSignAndSendTransaction } from '@privy-io/react-auth/solana'
 import { buildSendTransaction } from '../utils/getTransaction'
-import bs58 from 'bs58'
 import { Html5Qrcode } from 'html5-qrcode'
 import { useTheme } from '../context/ThemeContext'
+
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 interface SendModalProps {
     isOpen: boolean
@@ -31,7 +31,6 @@ export default function SendModal({ isOpen, onClose, wallet, token, onSuccess }:
     const [scanning, setScanning] = useState(false)
 
     const scannerRef = useRef<Html5Qrcode | null>(null)
-    const { signAndSendTransaction } = useSignAndSendTransaction()
     const { theme } = useTheme()
 
     useEffect(() => {
@@ -107,13 +106,19 @@ export default function SendModal({ isOpen, onClose, wallet, token, onSuccess }:
 
             if (!result.success) throw new Error(result.error || 'Failed to build transaction')
 
-            const txResult = await signAndSendTransaction({
-                transaction: result.transaction,
-                wallet,
-                chain: 'solana:mainnet'
+            // Send the serialized transaction to the backend to sign and broadcast
+            const sendRes = await fetch(`${BACKEND_URL}/api/zero/wallet/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fromAddress: wallet.address,
+                    transaction: Array.from(result.transaction), // send as number array
+                })
             })
+            const sendData = await sendRes.json()
+            if (!sendRes.ok) throw new Error(sendData.error || 'Failed to send transaction')
 
-            const signatureString = bs58.encode(txResult.signature)
+            const signatureString = sendData.signature
             setSuccess(true)
             setSignature(signatureString)
             setRecipientAddress('')

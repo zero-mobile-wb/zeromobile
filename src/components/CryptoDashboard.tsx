@@ -1,543 +1,734 @@
-import { useState, useEffect } from 'react'
-import { usePrivy } from '@privy-io/react-auth'
-import { useWallets, useCreateWallet } from '@privy-io/react-auth/solana'
+import { useState, useEffect, useMemo } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
-import { Send, ArrowDownToLine, ArrowLeftRight, ArrowUpRight, ArrowDownLeft, RefreshCw } from 'lucide-react'
-import logo from '../assets/0.jpg'
+import {
+  Send, ArrowLeftRight, ArrowUpRight,
+  ArrowDownLeft, RefreshCw, TrendingUp, Activity, CheckCircle2, QrCode, Search, X, ArrowLeft
+} from 'lucide-react'
 import { getTopTransactions, Transaction } from '../utils/getTransaction'
-import SendModal from './SendModal'
-import ReceiveModal from './ReceiveModal'
+import SendPage from './SendPage'
+import ReceivePage from './ReceivePage'
 
-// RPC Configuration with failover
+// ─── RPC ──────────────────────────────────────────────────────────────────
 const RPC_URLS = [
   'https://mainnet.helius-rpc.com/?api-key=8b1f5488-b7ad-46c7-ae91-f42dd14a8f46',
   'https://api.mainnet-beta.solana.com',
-  'https://solana-mainnet.g.allthatnode.com/full/mainnet',
 ]
-
 let activeRpcIndex = 0
 let connection = new Connection(RPC_URLS[activeRpcIndex], 'confirmed')
-
 const rotateRpc = () => {
   activeRpcIndex = (activeRpcIndex + 1) % RPC_URLS.length
   connection = new Connection(RPC_URLS[activeRpcIndex], 'confirmed')
-  console.log('Switched to fallback RPC:', RPC_URLS[activeRpcIndex])
 }
 
-interface Token {
-  address: string
-  name: string
-  symbol: string
-  decimals: number
-  logoURI?: string
-  tags?: string[]
-}
-
+// ─── Types ─────────────────────────────────────────────────────────────────
+interface Token { address: string; name: string; symbol: string; decimals: number; logoURI?: string }
 interface TokenBalance {
-  mint: string
-  balance: number
-  decimals: number
-  amount: string
-  metadata?: Token
-  usdValue?: number
-  pricePerToken?: number
+  mint: string; balance: number; decimals: number; amount: string
+  metadata?: Token; usdValue?: number; pricePerToken?: number
 }
 
-export default function CryptoDashboard() {
-  const { user, ready } = usePrivy()
-  const { wallets } = useWallets()
-  const { createWallet } = useCreateWallet()
-
-  const [totalUsdBalance, setTotalUsdBalance] = useState<number>(0)
+// ─── Component: Swap Form ─────────────────────────────────────────────────
+function SwapForm({ balances, allTokens, walletAddress }: { balances: TokenBalance[], allTokens: Token[], walletAddress: string }) {
+  const [fromMint, setFromMint] = useState('So11111111111111111111111111111111111111112')
+  const [toMint, setToMint] = useState('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+  const [amount, setAmount] = useState('')
+  const [quoteAmount, setQuoteAmount] = useState('')
+  const [quoteResponse, setQuoteResponse] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSelector, setShowSelector] = useState<'from' | 'to' | null>(null)
+  const [search, setSearch] = useState('')
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [rateInfo, setRateInfo] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [switching, setSwitching] = useState(false)
+
+  const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+  const SOL_MINT = 'So11111111111111111111111111111111111111112'
+  const PINNED = [SOL_MINT, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN']
+
+  const balanceMap = useMemo(() => {
+    const m: Record<string, TokenBalance> = {}
+    balances.forEach(b => { m[b.mint] = b })
+    return m
+  }, [balances])
+
+  // ── Filtered + sorted token list for selector ──
+  const filteredTokens = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    const excludeMint = showSelector === 'from' ? toMint : fromMint
+    const base = allTokens.filter(t => t.address !== excludeMint)
+    const matches = q
+      ? base.filter(t =>
+        (t.symbol?.toLowerCase() || '').includes(q) ||
+        (t.name?.toLowerCase() || '').includes(q) ||
+        t.address.toLowerCase().startsWith(q)
+      )
+      : base
+    return matches.sort((a, b) => {
+      const aPin = PINNED.indexOf(a.address), bPin = PINNED.indexOf(b.address)
+      if (aPin !== -1 && bPin !== -1) return aPin - bPin
+      if (aPin !== -1) return -1
+      if (bPin !== -1) return 1
+      return (balanceMap[b.address] ? 1 : 0) - (balanceMap[a.address] ? 1 : 0)
+    }).slice(0, 120)
+  }, [allTokens, search, showSelector, fromMint, toMint, balanceMap])
+
+  // ── Real-time Jupiter quote ──
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (!amount || !fromMint || !toMint || parseFloat(amount) <= 0) {
+        setQuoteAmount(''); setQuoteResponse(null); setRateInfo(null); return
+      }
+      const fromToken = allTokens.find(t => t.address === fromMint)
+      if (!fromToken) return
+      const inputAmount = Math.floor(parseFloat(amount) * Math.pow(10, fromToken.decimals)).toString()
+      setQuoteLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/zero/jupiter/quote?inputMint=${fromMint}&outputMint=${toMint}&amount=${inputAmount}&slippageBps=50`)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Quote failed')
+        setQuoteResponse(data)
+        const toToken = allTokens.find(t => t.address === toMint)
+        const out = parseInt(data.outAmount) / Math.pow(10, toToken?.decimals || 6)
+        setQuoteAmount(out.toFixed(6))
+        const rate = out / parseFloat(amount)
+        setRateInfo(`1 ${fromToken.symbol} ≈ ${rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${toToken?.symbol || ''}`)
+      } catch (err: any) {
+        setError(err.message); setQuoteAmount(''); setQuoteResponse(null); setRateInfo(null)
+      } finally {
+        setQuoteLoading(false)
+      }
+    }
+    const t = setTimeout(fetchQuote, 550)
+    return () => clearTimeout(t)
+  }, [amount, fromMint, toMint, allTokens])
+
+  // ── Switch tokens ──
+  const handleSwitch = () => {
+    if (switching) return
+    setSwitching(true)
+    const pFrom = fromMint, pTo = toMint, pQuote = quoteAmount
+    setFromMint(pTo); setToMint(pFrom)
+    setAmount(pQuote || amount)
+    setQuoteAmount(''); setQuoteResponse(null); setRateInfo(null)
+    setTimeout(() => setSwitching(false), 350)
+  }
+
+  // ── Execute swap ──
+  const executeSwap = async () => {
+    if (!quoteResponse || !walletAddress || walletAddress === 'No Wallet Found') return
+    setLoading(true); setError(null); setSuccess(null)
+    try {
+      const swapRes = await fetch(`${BACKEND_URL}/api/zero/jupiter/swap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quoteResponse, userPublicKey: walletAddress, wrapAndUnwrapSol: true })
+      })
+      const swapData = await swapRes.json()
+      if (!swapRes.ok) throw new Error(swapData.error || 'Swap build failed')
+      const binaryString = atob(swapData.swapTransaction)
+      const transactionArr = new Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) transactionArr[i] = binaryString.charCodeAt(i)
+      const sendRes = await fetch(`${BACKEND_URL}/api/zero/wallet/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromAddress: walletAddress, transaction: transactionArr })
+      })
+      const sendData = await sendRes.json()
+      if (!sendRes.ok) throw new Error(sendData.error || 'Swap execution failed')
+      setAmount(''); setQuoteAmount(''); setQuoteResponse(null); setRateInfo(null)
+      setSuccess(sendData.signature)
+      setTimeout(() => setSuccess(null), 9000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fromToken = allTokens.find(t => t.address === fromMint)
+  const toToken = allTokens.find(t => t.address === toMint)
+  const fromBalance = balanceMap[fromMint]?.balance
+
+  const TokenLogo = ({ token }: { token?: Token }) => (
+    <div className="w-7 h-7 rounded-full bg-[#f3f4f6] border border-[#e5e7eb] overflow-hidden flex-shrink-0 flex items-center justify-center">
+      {token?.logoURI
+        ? <img src={token.logoURI} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        : <span className="text-[9px] font-black text-[#6b7280]">{token?.symbol?.slice(0, 2) || '?'}</span>
+      }
+    </div>
+  )
+
+  return (
+    <>
+      {/* ── Token Selector Overlay ── */}
+      {showSelector && (
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center" onClick={e => { if (e.target === e.currentTarget) { setShowSelector(null); setSearch('') } }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowSelector(null); setSearch('') }} />
+          <div className="relative w-full sm:max-w-[420px] bg-white rounded-t-[2rem] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '82vh' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-[#f3f4f6]">
+              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Select Token</p>
+              <button onClick={() => { setShowSelector(null); setSearch('') }} className="w-8 h-8 rounded-xl bg-[#f3f4f6] flex items-center justify-center hover:bg-[#e5e7eb] transition-colors">
+                <X size={14} className="text-[#6b7280]" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="px-6 py-3 border-b border-[#f3f4f6]">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search tokens…"
+                  className="w-full pl-8 pr-4 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-xl text-sm font-medium text-[#09090b] placeholder-[#9ca3af] focus:outline-none focus:border-[#09090b] transition-all"
+                />
+              </div>
+            </div>
+            {/* List */}
+            <div className="overflow-y-auto flex-1 divide-y divide-[#f9fafb]">
+              {filteredTokens.length === 0
+                ? <div className="p-10 text-center text-[#9ca3af] text-sm">No tokens found</div>
+                : filteredTokens.map(token => {
+                  const held = balanceMap[token.address]
+                  const isPinned = PINNED.includes(token.address)
+                  return (
+                    <button
+                      key={token.address}
+                      onClick={() => {
+                        if (showSelector === 'from') { setFromMint(token.address); setAmount(''); setQuoteAmount('') }
+                        else { setToMint(token.address); setQuoteAmount('') }
+                        setShowSelector(null); setSearch('')
+                      }}
+                      className="w-full flex items-center gap-3 px-6 py-3.5 hover:bg-[#fafafa] transition-colors text-left"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-[#f3f4f6] border border-[#e5e7eb] overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {token.logoURI
+                          ? <img src={token.logoURI} alt={token.symbol} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                          : <span className="text-[10px] font-black text-[#6b7280]">{token.symbol.slice(0, 2)}</span>
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-bold text-[#09090b]">{token.symbol}</span>
+                          {isPinned && <span className="px-1.5 py-0.5 bg-[#09090b] text-white text-[8px] font-black uppercase tracking-widest rounded leading-none">Popular</span>}
+                        </div>
+                        <p className="text-[11px] text-[#9ca3af] font-medium truncate mt-0.5">{token.name}</p>
+                      </div>
+                      {held && (
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-black font-mono text-[#09090b]">{held.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                          {held.usdValue !== undefined && <p className="text-[10px] font-bold text-[#9ca3af]">${held.usdValue.toFixed(2)}</p>}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Swap Card ── */}
+      <div className="rounded-3xl bg-white border border-[#e5e7eb] p-6 md:p-7 shadow-sm relative overflow-hidden">
+        <div className="absolute -top-20 -right-20 w-40 h-40 bg-black/[0.015] blur-[50px] rounded-full pointer-events-none" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Instant Swap</p>
+          <div className="flex items-center gap-1.5">
+            {quoteLoading && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-ping" />
+                <span className="text-[9px] font-black text-[#9ca3af] uppercase tracking-widest">Fetching</span>
+              </div>
+            )}
+            {quoteResponse && !quoteLoading && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-100 rounded-full">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Live</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* YOU PAY */}
+        <div className="space-y-1.5 mb-2">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-[10px] font-black text-[#9ca3af] uppercase tracking-widest">You Pay</label>
+            {fromBalance !== undefined && (
+              <button onClick={() => setAmount(fromBalance.toFixed(6))} className="text-[9px] font-bold text-[#6b7280] hover:text-[#09090b] transition-colors uppercase tracking-tight">
+                Bal: {fromBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} · Max
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-[#fafafa] border border-[#e5e7eb] rounded-2xl focus-within:border-[#09090b]/25 transition-all">
+            <button
+              onClick={() => setShowSelector('from')}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#e5e7eb] rounded-2xl shadow-sm hover:border-[#09090b]/30 hover:shadow-md transition-all active:scale-95 flex-shrink-0"
+            >
+              <TokenLogo token={fromToken} />
+              <span className="text-[12px] font-black text-[#09090b]">{fromToken?.symbol || 'Select'}</span>
+              <svg className="w-3 h-3 text-[#9ca3af]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="flex-1 bg-transparent text-2xl font-black font-mono text-[#09090b] placeholder-[#d1d5db] focus:outline-none text-right min-w-0"
+            />
+          </div>
+        </div>
+
+        {/* SWITCH */}
+        <div className="flex items-center gap-3 py-1.5">
+          <div className="flex-1 h-px bg-[#e5e7eb]" />
+          <button
+            onClick={handleSwitch}
+            className="w-9 h-9 rounded-xl bg-white border border-[#e5e7eb] shadow-sm flex items-center justify-center hover:border-[#09090b]/30 hover:shadow-md active:scale-90 transition-all"
+            style={{ transform: switching ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)' }}
+          >
+            <ArrowLeftRight size={14} className="text-[#09090b]" />
+          </button>
+          <div className="flex-1 h-px bg-[#e5e7eb]" />
+        </div>
+
+        {/* YOU RECEIVE */}
+        <div className="space-y-1.5 mb-4">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-[10px] font-black text-[#9ca3af] uppercase tracking-widest">You Receive</label>
+            <span className="text-[9px] font-bold text-[#9ca3af]">Est. equivalent</span>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-[#fafafa] border border-[#e5e7eb] rounded-2xl transition-all">
+            <button
+              onClick={() => setShowSelector('to')}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#e5e7eb] rounded-2xl shadow-sm hover:border-[#09090b]/30 hover:shadow-md transition-all active:scale-95 flex-shrink-0"
+            >
+              <TokenLogo token={toToken} />
+              <span className="text-[12px] font-black text-[#09090b]">{toToken?.symbol || 'Select'}</span>
+              <svg className="w-3 h-3 text-[#9ca3af]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {quoteLoading
+              ? <div className="flex-1 flex items-center justify-end"><div className="w-28 h-7 bg-[#e5e7eb] rounded-xl animate-pulse" /></div>
+              : <input type="text" placeholder="0.00" value={quoteAmount} readOnly className="flex-1 bg-transparent text-2xl font-black font-mono text-[#09090b] placeholder-[#d1d5db] focus:outline-none text-right min-w-0 opacity-55 cursor-default" />
+            }
+          </div>
+          {rateInfo && !quoteLoading && (
+            <div className="px-1 flex items-center gap-1.5">
+              <TrendingUp size={10} className="text-[#9ca3af]" />
+              <span className="text-[10px] font-bold text-[#9ca3af]">{rateInfo}</span>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-100 rounded-xl mb-3">
+            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest text-center">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="p-3 bg-green-50 border border-green-100 rounded-xl mb-3 flex items-center gap-2">
+            <CheckCircle2 size={13} className="text-green-500 flex-shrink-0" />
+            <a href={`https://explorer.solana.com/tx/${success}`} target="_blank" rel="noopener noreferrer" className="text-[9px] font-black text-green-600 uppercase tracking-widest hover:underline truncate">
+              Swap successful · View Explorer
+            </a>
+          </div>
+        )}
+
+        <button
+          onClick={executeSwap}
+          disabled={loading || !quoteResponse || quoteLoading}
+          className="w-full py-4 rounded-2xl bg-[#09090b] text-white text-[11px] font-black uppercase tracking-[0.2em] disabled:opacity-30 transition-all hover:bg-black/80 active:scale-[0.98] shadow-lg flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Executing…</>
+          ) : quoteResponse ? 'Execute Swap' : quoteLoading ? 'Fetching Rate…' : 'Enter Amount'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+// ─── Component: Stats Bar ─────────────────────────────────────────────────
+function StatsBar({ transactions }: { transactions: Transaction[] }) {
+  const barHeights = useMemo(() => {
+    if (transactions.length === 0) return Array(10).fill(20)
+    const vals = transactions.slice(0, 10).map(tx => tx.amount || 0)
+    const max = Math.max(...vals, 0.001)
+    return vals.map(v => Math.max(15, (v / max) * 100))
+  }, [transactions])
+
+  return (
+    <div className="rounded-3xl bg-white border border-[#e5e7eb] p-6 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Activity Volume</p>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#09090b]">
+          <Activity size={10} className="text-white" />
+          <span className="text-[9px] font-bold text-white uppercase tracking-widest">By Date</span>
+        </div>
+      </div>
+
+      <div className="space-y-2 pt-2">
+        <div className="flex items-end gap-2 h-24">
+          {barHeights.map((h, i) => (
+            <div
+              key={i}
+              className="flex-1 rounded-sm transition-all duration-1000 bg-[#09090b]"
+              style={{ height: `${h}%`, opacity: 0.15 + (h / 100) * 0.85 }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
+export default function CryptoDashboard() {
+  const { user } = useAuth()
+
+  const [totalUsdBalance, setTotalUsdBalance] = useState(0)
   const [tokenMetadata, setTokenMetadata] = useState<Token[]>([])
   const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([])
   const [loadingTokens, setLoadingTokens] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
-  const [sendModalOpen, setSendModalOpen] = useState(false)
-  const [receiveModalOpen, setReceiveModalOpen] = useState(false)
-  const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null)
-  const [checkingWallet, setCheckingWallet] = useState(true)
+  const [subView, setSubView] = useState<'send' | 'receive' | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // Get the first Solana wallet
-  const solanaWallet = wallets[0]
+  const walletAddress = user?.walletAddress || 'No Wallet Found'
+  const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'
 
-  // Check wallet loading state
+  // ── Fetch token metadata from Jupiter ──────────────────────────────────
   useEffect(() => {
-    if (ready) {
-      const timer = setTimeout(() => {
-        setCheckingWallet(false)
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [ready])
-
-  // Fetch token metadata from Jupiter
-  useEffect(() => {
-    const fetchTokenMetadata = async () => {
-      try {
-        // Use the all tokens endpoint which is more reliable
-        const response = await fetch('https://tokens.jup.ag/tokens?tags=verified')
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
+    fetch('https://tokens.jup.ag/tokens?tags=verified')
+      .then(r => r.json())
+      .then(data => {
+        // Ensure SOL is always correctly identified even if the list is huge or fetch acts up
+        const sol = data.find((t: any) => t.address === 'So11111111111111111111111111111111111111112')
+        if (!sol) {
+          data.unshift({
+            address: 'So11111111111111111111111111111111111111112',
+            symbol: 'SOL',
+            name: 'Solana',
+            decimals: 9,
+            logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'
+          })
         }
-        const data = await response.json()
         setTokenMetadata(data)
-      } catch (err) {
-        console.error('Error fetching token metadata:', err)
-        // Set empty array on error to prevent blocking the app
-        setTokenMetadata([])
-      }
-    }
-
-    fetchTokenMetadata()
+      })
+      .catch(() => setTokenMetadata([{
+        address: 'So11111111111111111111111111111111111111112',
+        symbol: 'SOL',
+        name: 'Solana',
+        decimals: 9,
+        logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'
+      }]))
   }, [])
 
-  // Fetch token balances with USD values
+  // ── Fetch balances ─────────────────────────────────────────────────────
   const fetchTokenBalances = async (retryCount = 0): Promise<void> => {
-    if (!solanaWallet) {
-      console.log('No solana wallet available for balance fetch')
-      return
-    }
-
+    if (!walletAddress || walletAddress === 'No Wallet Found') return
     setLoadingTokens(true)
     setError(null)
     try {
-      console.log(`Fetching balances for: ${solanaWallet.address} using RPC ${activeRpcIndex}`)
-      const publicKey = new PublicKey(solanaWallet.address)
-
-      // Fetch SOL balance
+      const publicKey = new PublicKey(walletAddress)
       const lamports = await connection.getBalance(publicKey)
       const solBalance = lamports / LAMPORTS_PER_SOL
-      console.log('SOL Balance:', solBalance)
 
-      // Get all token accounts
       const response = await connection.getParsedTokenAccountsByOwner(
         publicKey,
         { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') }
       )
-
       const tokenAccounts = response.value
-        .map((accountInfo) => {
-          const tokenData = accountInfo.account.data.parsed.info
-          return {
-            mint: tokenData.mint,
-            balance: tokenData.tokenAmount.uiAmount,
-            decimals: tokenData.tokenAmount.decimals,
-            amount: tokenData.tokenAmount.amount
-          }
-        })
-        .filter(token => token.balance > 0)
+        .map(a => ({
+          mint: a.account.data.parsed.info.mint,
+          balance: a.account.data.parsed.info.tokenAmount.uiAmount,
+          decimals: a.account.data.parsed.info.tokenAmount.decimals,
+          amount: a.account.data.parsed.info.tokenAmount.amount,
+        }))
+        .filter(t => t.balance > 0)
 
       const SOL_MINT = 'So11111111111111111111111111111111111111112'
       const allMints = [SOL_MINT, ...tokenAccounts.map(t => t.mint)]
 
-      // Fetch prices with explicit fallbacks
       let priceData: any = { data: {} }
-      const jupKey = import.meta.env.VITE_JUPITER_API_KEY
-      const headers: Record<string, string> = {}
-      if (jupKey) headers['x-api-key'] = jupKey
-
       try {
-        const priceResponse = await fetch(`/api/jupiter/price/v3?ids=${allMints.join(',')}`, {
-          headers
-        })
+        const jupKey = import.meta.env.VITE_JUPITER_API_KEY
+        const headers: Record<string, string> = {}
+        if (jupKey) headers['x-api-key'] = jupKey
+        const pr = await fetch(`https://price.jup.ag/v6/price?ids=${allMints.join(',')}`, { headers })
+        if (pr.ok) priceData = await pr.json()
+      } catch { }
 
-        if (priceResponse.ok) {
-          priceData = await priceResponse.json()
-        } else {
-          console.warn(`Jupiter Price API returned ${priceResponse.status}. Using Fallbacks...`)
-        }
-      } catch (priceErr) {
-        console.error('Error fetching from Jupiter Price API:', priceErr)
-      }
-
-      // Always try CoinGecko for SOL if we don't have a price yet
-      if (!priceData.data?.[SOL_MINT]?.price && !priceData[SOL_MINT]?.price) {
+      if (!priceData.data?.[SOL_MINT]?.price) {
         try {
-          const cgResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
-          if (cgResponse.ok) {
-            const cgData = await cgResponse.json()
-            const solPrice = cgData.solana?.usd
-            if (solPrice) {
-              if (!priceData.data) priceData.data = {}
-              priceData.data[SOL_MINT] = { price: solPrice }
-            }
+          const cg = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+          if (cg.ok) {
+            const d = await cg.json()
+            if (!priceData.data) priceData.data = {}
+            priceData.data[SOL_MINT] = { price: d.solana?.usd || 0 }
           }
-        } catch (cgErr) {
-          console.error('CoinGecko fallback failed:', cgErr)
-        }
+        } catch { }
       }
 
-      // Fallback for other tokens using DexScreener
-      for (const mint of tokenAccounts.map(t => t.mint)) {
-        if (!priceData.data?.[mint]?.price && !priceData[mint]?.price) {
-          try {
-            const dsResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`)
-            if (dsResponse.ok) {
-              const dsData = await dsResponse.json()
-              const pair = dsData.pairs?.[0]
-              if (pair?.priceUsd) {
-                if (!priceData.data) priceData.data = {}
-                priceData.data[mint] = { price: parseFloat(pair.priceUsd) }
-              }
-            }
-          } catch (dsErr) {
-            console.error(`DexScreener fallback failed for ${mint}:`, dsErr)
-          }
-        }
-      }
+      const getPrice = (mint: string) =>
+        priceData.data?.[mint]?.price ? Number(priceData.data[mint].price) : 0
 
       const allBalances: TokenBalance[] = []
-      const getPrice = (mint: string) => {
-        if (priceData.data?.[mint]?.price) return Number(priceData.data[mint].price)
-        if (priceData[mint]?.price) return Number(priceData[mint].price)
-        return 0
-      }
-
       const solPrice = getPrice(SOL_MINT)
-      const solMetadata = tokenMetadata.find(t => t.address === SOL_MINT)
-      const solUsdValue = Number(solBalance * solPrice)
 
       allBalances.push({
-        mint: SOL_MINT,
-        balance: solBalance,
-        decimals: 9,
+        mint: SOL_MINT, balance: solBalance, decimals: 9,
         amount: (solBalance * LAMPORTS_PER_SOL).toString(),
-        pricePerToken: solPrice,
-        usdValue: solUsdValue,
-        metadata: solMetadata || {
-          address: SOL_MINT,
-          name: 'Solana',
-          symbol: 'SOL',
-          decimals: 9,
+        pricePerToken: solPrice, usdValue: solBalance * solPrice,
+        metadata: tokenMetadata.find(t => t.address === SOL_MINT) || {
+          address: SOL_MINT, name: 'Solana', symbol: 'SOL', decimals: 9,
           logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'
         }
       })
 
       for (const token of tokenAccounts) {
         const price = getPrice(token.mint)
-        const metadata = tokenMetadata.find(t => t.address === token.mint)
-
         allBalances.push({
-          mint: token.mint,
-          balance: token.balance,
-          decimals: token.decimals,
-          amount: token.amount,
-          pricePerToken: price,
-          usdValue: token.balance * price,
-          metadata: metadata || {
-            address: token.mint,
-            name: 'Unknown Token',
-            symbol: token.mint.slice(0, 6),
-            decimals: token.decimals
+          ...token, pricePerToken: price, usdValue: token.balance * price,
+          metadata: tokenMetadata.find(t => t.address === token.mint) || {
+            address: token.mint, name: 'Unknown Token',
+            symbol: token.mint.slice(0, 6), decimals: token.decimals
           }
         })
       }
 
-      const totalUsd = allBalances.reduce((sum, token) => sum + (token.usdValue || 0), 0)
-      setTotalUsdBalance(totalUsd)
+      setTotalUsdBalance(allBalances.reduce((s, t) => s + (t.usdValue || 0), 0))
       setTokenBalances(allBalances)
     } catch (err: any) {
-      console.error('Error fetching token balances:', err)
-      if (retryCount < RPC_URLS.length - 1) {
-        rotateRpc()
-        return fetchTokenBalances(retryCount + 1)
-      }
-      setError(`RPC Error: ${err.message || 'Connection failed'}`)
+      if (retryCount < RPC_URLS.length - 1) { rotateRpc(); return fetchTokenBalances(retryCount + 1) }
+      setError(`RPC Error: ${err.message}`)
     } finally {
       setLoadingTokens(false)
     }
   }
 
-  // Fetch token balances when wallet is available
-  useEffect(() => {
-    if (solanaWallet) {
-      fetchTokenBalances()
-    }
-  }, [solanaWallet])
-
-  // Create Solana wallet
-  const handleCreateWallet = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { wallet } = await createWallet()
-      console.log('Wallet created:', wallet)
-    } catch (err: any) {
-      setError(err.message || 'Failed to create wallet')
-      console.error('Error creating wallet:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Fetch recent transactions
+  // ── Fetch transactions ─────────────────────────────────────────────────
   const fetchTransactions = async (retryCount = 0): Promise<void> => {
-    if (!solanaWallet) return
-
+    if (!walletAddress || walletAddress === 'No Wallet Found') return
     setLoadingTransactions(true)
     try {
-      const txs = await getTopTransactions(solanaWallet.address)
-      setTransactions(txs)
+      setTransactions(await getTopTransactions(walletAddress))
     } catch (err: any) {
-      console.error('Error fetching transactions:', err)
-      if (retryCount < RPC_URLS.length - 1) {
-        rotateRpc()
-        return fetchTransactions(retryCount + 1)
-      }
+      if (retryCount < RPC_URLS.length - 1) { rotateRpc(); return fetchTransactions(retryCount + 1) }
     } finally {
       setLoadingTransactions(false)
     }
   }
 
-  // Fetch transactions when wallet is available
   useEffect(() => {
-    if (solanaWallet) {
-      fetchTransactions()
-    }
-  }, [solanaWallet])
+    if (walletAddress && walletAddress !== 'No Wallet Found') { fetchTokenBalances(); fetchTransactions() }
+  }, [walletAddress, tokenMetadata])
 
-  // Refresh all data
-  const handleRefresh = async () => {
-    await fetchTokenBalances()
-    await fetchTransactions()
+  const handleRefresh = async () => { await fetchTokenBalances(); await fetchTransactions() }
+
+  // ── Sub-view: Send / Receive pages ────────────────────────────────────────
+  if (subView === 'send') {
+    return (
+      <div className="h-full overflow-y-auto bg-white">
+        <div className="px-5 md:px-8 pt-6 flex items-center gap-3">
+          <button onClick={() => setSubView(null)} className="flex items-center gap-1.5 text-[10px] font-black text-[#6b7280] uppercase tracking-widest hover:text-[#09090b] transition-colors">
+            <ArrowLeft size={12} /> Back
+          </button>
+        </div>
+        <SendPage
+          balances={tokenBalances}
+          allTokens={tokenMetadata}
+          walletAddress={walletAddress}
+          walletObject={{ address: walletAddress }}
+          onSuccess={() => { fetchTokenBalances(); fetchTransactions() }}
+        />
+      </div>
+    )
   }
 
-  if (!user || (!solanaWallet && !checkingWallet && !loading)) {
-    // If not loading and no wallet, show create wallet
-    // But wait, user might be authenticated but no solana wallet
-    // This view handles the "Welcome to Zero" content
+  if (subView === 'receive') {
+    return (
+      <div className="h-full overflow-y-auto bg-white">
+        <div className="px-5 md:px-8 pt-6 flex items-center gap-3">
+          <button onClick={() => setSubView(null)} className="flex items-center gap-1.5 text-[10px] font-black text-[#6b7280] uppercase tracking-widest hover:text-[#09090b] transition-colors">
+            <ArrowLeft size={12} /> Back
+          </button>
+        </div>
+        <ReceivePage walletAddress={walletAddress} />
+      </div>
+    )
   }
 
-  // Rendering logic
   return (
-    <div className="max-w-[1600px] mx-auto px-0 md:px-1 pt-4 md:pt-6 pb-12">
-      {!solanaWallet ? (
-        checkingWallet || loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] gap-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-blue-500/20 blur-2xl animate-pulse rounded-full" />
-              <img src={logo} alt="Logo" className="w-24 h-24 object-contain rounded-2xl relative z-10 animate-bounce" />
-            </div>
-            <p className="text-gray-400 font-medium tracking-wide">{loading ? 'Setting up your wallet...' : 'Initializing...'}</p>
+    <div className="h-full px-5 md:px-8 py-6 md:py-8 overflow-y-auto bg-white">
+      <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto min-h-full">
+
+        {/* ════════════════ LEFT 60%: Header, Actions, Stats, History ════════════════ */}
+        <div className="flex-1 lg:basis-[60%] space-y-6">
+
+          {/* Header */}
+          <div className="mb-2">
+            <h1 className="text-3xl font-black text-black tracking-tight leading-tight">Welcome back,<br /> {firstName}</h1>
+            <p className="text-sm font-medium text-[#6b7280] mt-2 tracking-wide">Manage your crypto effortlessly</p>
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center px-4">
-            <div className="w-32 h-32 bg-white/5 rounded-3xl backdrop-blur-xl border border-white/10 flex items-center justify-center mb-8 shadow-2xl">
-              <img src={logo} alt="Logo" className="w-20 h-20 object-contain rounded-2xl" />
-            </div>
-            <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">Welcome to Zero</h2>
-            <p className="text-gray-400 mb-10 max-w-sm mx-auto leading-relaxed">
-              Please sign in to access your wallet and banking features.
-            </p>
-            <button
-              onClick={handleCreateWallet}
-              className="px-8 py-3 bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition-colors"
-            >
-              Create Wallet
-            </button>
+
+          {/* Interaction Buttons Row */}
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { icon: <Send size={20} />, label: 'Send', action: () => setSubView('send') },
+              { icon: <QrCode size={20} />, label: 'Receive', action: () => setSubView('receive') },
+              { icon: <ArrowLeftRight size={20} />, label: 'Swap', disabled: true },
+              { icon: <RefreshCw size={20} />, label: 'Refresh', action: handleRefresh, loading: loadingTokens || loadingTransactions },
+            ].map((item, idx) => (
+              <button
+                key={idx}
+                onClick={item.action}
+                disabled={item.disabled || item.loading}
+                className="flex flex-col items-center justify-center p-4 bg-white border border-[#e5e7eb] rounded-xl hover:shadow-md transition-all duration-200 group disabled:opacity-40 active:scale-95 shadow-sm"
+              >
+                <div className={`text-black mb-2 ${item.loading ? 'animate-spin' : 'group-hover:-translate-y-1 transition-transform'}`}>
+                  {item.icon}
+                </div>
+                <span className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider">{item.label}</span>
+              </button>
+            ))}
           </div>
-        )
-      ) : (
-        /* Connected Wallet View */
-        <div className="grid grid-cols-1 gap-6">
-          <div className="space-y-6">
-            {/* Wallet Balance Card */}
-            <div className="bg-gray-100 dark:bg-white/5 backdrop-blur-3xl border border-gray-200 dark:border-white/10 rounded-3xl p-8 md:p-12 relative overflow-hidden shadow-none dark:shadow-2xl">
-              <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                <div className="text-center md:text-left">
-                  <div className="flex items-center justify-center md:justify-start gap-2 mb-3">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Main Account Balance</span>
-                  </div>
-                  {loadingTokens && totalUsdBalance === 0 ? (
-                    <div className="h-16 w-48 bg-gray-200 dark:bg-white/5 animate-pulse rounded-2xl mb-2" />
-                  ) : (
-                    <h2 className="text-5xl md:text-7xl font-mono font-black bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-gray-800 to-gray-500 dark:from-white dark:via-white dark:to-white/60 mb-2 tracking-tighter">
-                      ${totalUsdBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </h2>
-                  )}
-                  <div className="flex items-center justify-center md:justify-start gap-3 text-gray-400">
-                    <span className="text-sm font-mono truncate max-w-[200px]">{solanaWallet.address}</span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigator.clipboard.writeText(solanaWallet.address)}
-                        className="p-1.5 bg-gray-200 dark:bg-white/5 rounded-md hover:bg-gray-300 dark:hover:bg-white/10 transition-colors"
-                        title="Copy Address"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                      <div className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <span className="text-[10px] font-bold text-blue-500 uppercase">
-                          {tokenBalances.find(t => t.metadata?.symbol === 'SOL' || t.mint === 'So11111111111111111111111111111111111111112')?.balance?.toLocaleString() || '0'} SOL
-                        </span>
+
+          {/* Statistics Bar */}
+          <StatsBar transactions={transactions} />
+
+          {/* Transaction History */}
+          <div className="rounded-3xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm">
+            <div className="px-6 py-5 border-b border-[#e5e7eb] flex items-center justify-between">
+              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Transaction History</p>
+              <button className="text-[10px] font-bold text-[#09090b] uppercase tracking-widest hover:underline pointer-events-none opacity-50">View All</button>
+            </div>
+
+            {loadingTransactions ? (
+              <div className="p-10 flex justify-center"><svg className="animate-spin w-5 h-5 text-[#09090b]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg></div>
+            ) : transactions.length === 0 ? (
+              <div className="p-10 text-center text-[#9ca3af] text-sm font-medium">No transactions found</div>
+            ) : (
+              <div className="divide-y divide-[#e5e7eb] max-h-80 overflow-y-auto">
+                {transactions.map(tx => (
+                  <a
+                    key={tx.signature}
+                    href={`https://explorer.solana.com/tx/${tx.signature}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${tx.type === 'receive' ? 'bg-[#f0fdf4] border-[#bbf7d0]' :
+                        tx.type === 'send' ? 'bg-[#fef2f2] border-[#fecaca]' :
+                          'bg-[#f8fafc] border-[#e2e8f0]'
+                        }`}>
+                        {tx.type === 'receive' ? <ArrowDownLeft className="w-4 h-4 text-[#16a34a]" />
+                          : tx.type === 'send' ? <ArrowUpRight className="w-4 h-4 text-[#dc2626]" />
+                            : <ArrowLeftRight className="w-4 h-4 text-[#475569]" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-[#09090b]">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.tokenSymbol || ''}</p>
+                        {tx.amount !== undefined && (
+                          <p className="text-xs font-mono font-medium text-[#6b7280] mt-0.5">
+                            {tx.type === 'receive' ? '+' : '-'}{tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {tx.tokenSymbol || ''}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                {/* Actions Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full md:w-auto">
-                  {[
-                    {
-                      icon: <Send size={20} />, label: 'Send', action: () => {
-                        const solToken = tokenBalances.find(t => t.metadata?.symbol === 'SOL')
-                        if (solToken) { setSelectedToken(solToken); setSendModalOpen(true) }
-                      }
-                    },
-                    { icon: <ArrowDownToLine size={20} />, label: 'Receive', action: () => setReceiveModalOpen(true) },
-                    { icon: <ArrowLeftRight size={20} />, label: 'Swap', disabled: true },
-                    { icon: <RefreshCw size={20} />, label: 'Refresh', action: handleRefresh, loading: loadingTokens }
-                  ].map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={item.action}
-                      disabled={item.disabled || item.loading}
-                      className="flex flex-col items-center gap-2 p-4 bg-gray-200 dark:bg-white/5 rounded-2xl border border-gray-300 dark:border-white/5 hover:bg-gray-300 dark:hover:bg-white/10 transition-all duration-300 group disabled:opacity-30 active:scale-95 shadow-none"
-                    >
-                      <div className={`w-10 h-10 flex items-center justify-center text-gray-900 dark:text-white group-hover:scale-110 transition-transform ${item.loading ? 'animate-spin' : ''}`}>
-                        {item.icon}
-                      </div>
-                      <span className="text-xs font-black text-gray-900 dark:text-gray-300 uppercase tracking-widest">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold text-[#09090b] group-hover:text-blue-600 transition-colors uppercase tracking-tight">View</p>
+                      <p className="text-[10px] font-bold text-[#9ca3af] mt-1 uppercase tracking-widest">{new Date(tx.timestamp * 1000).toLocaleDateString()}</p>
+                    </div>
+                  </a>
+                ))}
               </div>
-            </div>
-
-            {/* Tokens List */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-xl font-bold tracking-tight">Your Assets</h3>
-                <span className="px-2.5 py-1 bg-white/10 rounded-full text-[10px] font-bold text-gray-400 uppercase tracking-widest border border-white/5">
-                  {tokenBalances.length} Tokens
-                </span>
-              </div>
-
-              <div className="bg-gray-100 dark:bg-white/5 backdrop-blur-2xl border border-gray-100 dark:border-white/10 rounded-3xl overflow-hidden shadow-none dark:shadow-xl">
-                {loadingTokens ? (
-                  <div className="p-6 text-center text-gray-500">Loading tokens...</div>
-                ) : tokenBalances.length === 0 ? (
-                  <div className="p-12 text-center text-gray-500">
-                    <p className="text-sm">No digital assets found in this wallet.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-white/5">
-                    {tokenBalances.map((tokenBalance) => (
-                      <div
-                        key={tokenBalance.mint}
-                        className="flex items-center justify-between p-5 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors group cursor-pointer"
-                        onClick={() => {
-                          setSelectedToken(tokenBalance)
-                          setSendModalOpen(true)
-                        }}
-                      >
-                        <div className="flex items-center gap-4">
-                          <img src={tokenBalance.metadata?.logoURI || ''} className="w-12 h-12 rounded-2xl bg-white/5 object-cover" />
-                          <div>
-                            <p className="font-bold text-gray-900 dark:text-white">{tokenBalance.metadata?.symbol || 'Unknown'}</p>
-                            <p className="text-xs text-gray-500">{tokenBalance.metadata?.name}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold">{tokenBalance.balance.toLocaleString()}</p>
-                          <p className="text-sm text-gray-400">${(tokenBalance.usdValue || 0).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Transaction History */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-xl font-bold tracking-tight">Recent Activity</h3>
-              </div>
-              <div className="bg-gray-100 dark:bg-white/5 backdrop-blur-2xl border border-gray-100 dark:border-white/10 rounded-3xl overflow-hidden shadow-none dark:shadow-xl">
-                {transactions.length === 0 ? (
-                  <div className="p-12 text-center text-gray-500">No transactions yet.</div>
-                ) : (
-                  <div className="divide-y divide-white/5">
-                    {transactions.map(tx => (
-                      <a key={tx.signature} href={`https://solscan.io/tx/${tx.signature}`} target="_blank" rel="noopener noreferrer" className="block p-5 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              tx.type === 'receive' ? 'bg-green-500/10' : 
-                              tx.type === 'send' ? 'bg-red-500/10' : 
-                              'bg-blue-500/10'
-                            }`}>
-                              {tx.type === 'receive' ? (
-                                <ArrowDownLeft className={`w-4 h-4 text-green-500`} />
-                              ) : tx.type === 'send' ? (
-                                <ArrowUpRight className={`w-4 h-4 text-red-500`} />
-                              ) : (
-                                <ArrowLeftRight className={`w-4 h-4 text-blue-500`} />
-                              )}
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm text-gray-900 dark:text-white">
-                                {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.tokenSymbol || 'Token'}
-                              </p>
-                              {tx.amount !== undefined && (
-                                <p className="text-xs text-gray-500">
-                                  {tx.type === 'receive' ? '+' : '-'}{tx.amount.toLocaleString(undefined, { 
-                                    minimumFractionDigits: 2, 
-                                    maximumFractionDigits: 6 
-                                  })} {tx.tokenSymbol || ''}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs text-gray-400">{new Date(tx.timestamp * 1000).toLocaleDateString()}</span>
-                            <p className="text-[10px] text-gray-500 mt-0.5">{new Date(tx.timestamp * 1000).toLocaleTimeString()}</p>
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
+            )}
           </div>
+
         </div>
-      )}
 
-      {selectedToken && (
-        <SendModal
-          isOpen={sendModalOpen}
-          onClose={() => {
-            setSendModalOpen(false)
-            setSelectedToken(null)
-          }}
-          wallet={solanaWallet!} // Safe assert because modal only opens if wallet exists
-          token={{
-            mint: selectedToken.mint,
-            symbol: selectedToken.metadata?.symbol || 'Unknown',
-            balance: selectedToken.balance,
-            decimals: selectedToken.decimals,
-            logoURI: selectedToken.metadata?.logoURI
-          }}
-          onSuccess={() => {
-            fetchTokenBalances()
-            fetchTransactions()
-          }}
-        />
-      )}
 
-      {solanaWallet && (
-        <ReceiveModal
-          isOpen={receiveModalOpen}
-          onClose={() => setReceiveModalOpen(false)}
-          walletAddress={solanaWallet.address}
-        />
-      )}
+        {/* ════════════════ RIGHT 40%: Balance & Swap ════════════════ */}
+        <div className="lg:basis-[40%] space-y-6">
+
+          {/* Balance Card with border radius above Swap */}
+          <div className="rounded-3xl bg-[#09090b] text-white p-7 relative overflow-hidden shadow-xl">
+            {/* Elegant Background Gradients */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 blur-[100px] rounded-full pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col items-start">
+              <p className="text-[10px] font-bold text-[rgba(255,255,255,0.5)] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                Live Balance
+              </p>
+
+              {loadingTokens && totalUsdBalance === 0 ? (
+                <div className="h-12 w-48 bg-[rgba(255,255,255,0.1)] animate-pulse rounded-2xl mb-4" />
+              ) : (
+                <h2 className="text-5xl font-black font-mono tracking-tighter mb-4 leading-none">
+                  ${totalUsdBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </h2>
+              )}
+
+              {error && <p className="mt-4 text-xs font-bold text-red-400 bg-red-400/10 px-3 py-2 rounded-lg w-full">{error}</p>}
+            </div>
+          </div>
+
+          {/* Swap Form Component */}
+          <SwapForm balances={tokenBalances} allTokens={tokenMetadata} walletAddress={walletAddress} />
+
+          {/* Assets Box (Moved here to fill space if desired, or left off? Standard is to have it) */}
+          <div className="rounded-3xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm">
+            <div className="px-6 py-5 border-b border-[#e5e7eb] flex items-center justify-between">
+              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Your Assets</p>
+              <span className="text-[10px] font-bold text-[#09090b] bg-[#f3f4f6] px-2.5 py-1 rounded-full">{tokenBalances.length}</span>
+            </div>
+            {loadingTokens ? (
+              <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">Loading…</div>
+            ) : tokenBalances.length === 0 ? (
+              <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">No assets found.</div>
+            ) : (
+              <div className="divide-y divide-[#e5e7eb]">
+                {tokenBalances.map(tb => (
+                  <div
+                    key={tb.mint}
+                    onClick={() => setSubView('send')}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-4">
+                      {tb.metadata?.logoURI
+                        ? <img src={tb.metadata.logoURI} className="w-10 h-10 rounded-full bg-[#f3f4f6] object-cover border border-[#e5e7eb]" />
+                        : <div className="w-10 h-10 rounded-full bg-[#f3f4f6] flex items-center justify-center text-xs font-black text-[#6b7280]">{tb.metadata?.symbol?.slice(0, 2) || '?'}</div>
+                      }
+                      <div>
+                        <p className="text-sm font-bold text-[#09090b]">{tb.metadata?.symbol || 'Unknown'}</p>
+                        <p className="text-xs font-medium text-[#6b7280]">{tb.metadata?.name}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black font-mono text-[#09090b]">{tb.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                      <p className="text-[11px] font-bold text-[#6b7280] mt-0.5">${(tb.usdValue || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
     </div>
   )
 }

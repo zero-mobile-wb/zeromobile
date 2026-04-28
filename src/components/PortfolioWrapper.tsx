@@ -1,17 +1,17 @@
-import { useWallets } from '@privy-io/react-auth/solana'
+import { useAuth } from '../context/AuthContext'
 import Portfolio from './Portfolio'
 
 export default function PortfolioWrapper() {
-    const { wallets } = useWallets()
-    const solanaWallet = wallets[0]
+    const { user } = useAuth()
+    const walletAddress = user?.walletAddress
 
-    if (!solanaWallet) {
+    if (!walletAddress) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
-                <p className="text-gray-500">Please connect your wallet to view portfolio</p>
+                <p className="text-gray-500">No wallet linked to your account yet.</p>
             </div>
         )
     }
 
-    return <Portfolio address={solanaWallet.address} />
+    return <Portfolio address={walletAddress} />
 }

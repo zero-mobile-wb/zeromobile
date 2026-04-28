@@ -22,16 +22,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/jupiter/price': {
-        target: 'https://lite-api.jup.ag',
-        changeOrigin: true,
-        rewrite: (path) => {
-          const newPath = path.replace(/^\/api\/jupiter/, '')
-          console.log(`Proxying Price API: ${path} -> ${newPath}`)
-          return newPath
-        },
-        secure: false,
-      },
+
       '/api/jupiter': {
         target: 'https://api.jup.ag',
         changeOrigin: true,

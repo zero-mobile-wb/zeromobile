@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import logo from '../assets/0.jpg'
+import logo from '../assets/icon.png'
 import { useTheme } from '../context/ThemeContext'
 
 export default function DigitalPreloader() {
@@ -21,7 +21,7 @@ export default function DigitalPreloader() {
     const { theme } = useTheme()
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-white dark:bg-[#0a0a0b] transition-colors duration-300">
+        <div className="flex items-center justify-center min-h-screen bg-white transition-colors duration-300">
             <div className="relative">
                 {/* Glow effect */}
                 <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full scale-150 animate-pulse" />

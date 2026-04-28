@@ -13,6 +13,8 @@ export default function DashboardLayout() {
     // /settings -> 'settings'
     const getActiveSection = (pathname: string) => {
         if (pathname === '/dashboard') return 'dashboard'
+        if (pathname === '/send') return 'send'
+        if (pathname === '/receive') return 'receive'
         if (pathname === '/zeroalpha') return 'zeroalpha'
         if (pathname === '/portfolio') return 'portfolio'
         if (pathname === '/settings') return 'settings'
@@ -23,21 +25,21 @@ export default function DashboardLayout() {
 
     const handleSectionChange = (section: string) => {
         if (section === 'dashboard') navigate('/dashboard')
+        else if (section === 'send') navigate('/send')
+        else if (section === 'receive') navigate('/receive')
         else if (section === 'zeroalpha') navigate('/zeroalpha')
         else if (section === 'portfolio') navigate('/portfolio')
         else if (section === 'settings') navigate('/settings')
     }
 
     return (
-        <div className="flex h-screen bg-white dark:bg-[#0a0a0b] text-gray-900 dark:text-white overflow-hidden transition-colors duration-300">
+        <div className="flex h-screen bg-white text-[#09090b] overflow-hidden transition-colors duration-300">
             {/* Sidebar - Hidden on mobile */}
             <Sidebar activeSection={activeSection} onSectionChange={handleSectionChange} />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col relative h-full overflow-hidden">
-                {/* Background Decorative Elements */}
-                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
-                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/5 blur-[120px] rounded-full pointer-events-none" />
+
 
                 {/* Navbar */}
                 <Navbar />
