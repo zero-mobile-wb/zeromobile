@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { User, Key, Copy, Mail, Globe, CheckCircle, AlertCircle, LogOut, Check } from 'lucide-react'
+import { User, Key, Copy, Mail, Globe, CheckCircle, AlertCircle, LogOut, Check, Lock } from 'lucide-react'
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function Settings() {
-    const { user, logout } = useAuth()
+    const { user, logout, requiresPasskeySetup, setupPasskey, isWalletLocked } = useAuth()
 
     const [copied, setCopied] = useState(false)
     const [name, setName] = useState('')
@@ -292,6 +292,36 @@ export default function Settings() {
                                         <AlertCircle size={10} /> Critical: Never share your private key.
                                     </p>
                                 )}
+                            </div>
+
+                            {/* Set PIN Vault Form */}
+                            <div className="bg-[#fafafa] border border-[#e5e7eb] rounded-2xl p-5 mt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <Lock size={16} className="text-black" />
+                                        <label className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Web Vault Protection</label>
+                                    </div>
+                                    {!requiresPasskeySetup && !isWalletLocked ? (
+                                        <span className="text-[10px] font-black text-green-600 bg-green-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-widest"><CheckCircle size={10} /> Active</span>
+                                    ) : (
+                                        <span className="text-[10px] font-black text-orange-500 bg-orange-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-widest"><AlertCircle size={10} /> Vulnerable</span>
+                                    )}
+                                </div>
+                                {error && <p className="text-red-500 text-[10px] font-bold mb-3 uppercase">{error}</p>}
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            setError('');
+                                            await setupPasskey();
+                                        } catch (e: any) {
+                                            console.error("Passkey setup failed", e);
+                                            setError(e.message || "Passkey setup failed");
+                                        }
+                                    }}
+                                    className="w-full bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl hover:bg-black/80 transition-colors"
+                                >
+                                    {requiresPasskeySetup ? 'Setup Passkey Vault' : 'Re-register Passkey'}
+                                </button>
                             </div>
                         </div>
 

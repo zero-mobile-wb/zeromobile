@@ -89,89 +89,33 @@ export default function LoginScreen() {
                                 Sign in with your email to access your wallet.
                             </p>
 
-                            <form onSubmit={handleSendOtp} className="flex flex-col gap-3">
-                                {/* Active step — email */}
-                                <div style={{
-                                    background: '#ffffff', borderRadius: 16,
-                                    padding: '0 16px', height: 56,
-                                    border: '1.5px solid #e5e7eb',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                    boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-                                }}>
-                                    <div style={{
-                                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                                        background: '#09090b', color: '#ffffff',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    }}>
-                                        <span style={{ fontSize: 11, fontWeight: 800 }}>1</span>
-                                    </div>
+                            <form onSubmit={handleSendOtp} className="flex flex-col gap-4">
+                                <div className="relative">
                                     <input
                                         type="email"
                                         value={email}
                                         onChange={e => { setEmail(e.target.value); setLocalError(null) }}
-                                        placeholder="Enter your email address"
+                                        placeholder="name@example.com"
                                         autoComplete="email"
                                         autoFocus
-                                        style={{
-                                            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                                            fontSize: 14, fontWeight: 600, color: '#09090b',
-                                            fontFamily: 'Inter, sans-serif',
-                                        }}
+                                        className="w-full h-14 px-5 bg-[#fafafa] border border-gray-200 rounded-2xl outline-none focus:border-black focus:bg-white focus:ring-1 focus:ring-black transition-all text-sm font-semibold text-black shadow-[0_2px_4px_rgba(0,0,0,0.02)]"
+                                        style={{ fontFamily: 'Inter, sans-serif' }}
                                     />
                                 </div>
 
-                                {/* Dim step 2 */}
-                                <div style={{
-                                    background: '#fafafa', borderRadius: 16,
-                                    padding: '0 16px', height: 56, border: '1px solid #f3f4f6',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                }}>
-                                    <div style={{
-                                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                                        background: '#f3f4f6', border: '1.5px solid #e5e7eb', color: '#9ca3af',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    }}>
-                                        <span style={{ fontSize: 11, fontWeight: 700 }}>2</span>
-                                    </div>
-                                    <span style={{ fontSize: 14, fontWeight: 500, color: '#9ca3af' }}>Verify your code</span>
-                                </div>
-
-                                {/* Dim step 3 */}
-                                <div style={{
-                                    background: '#fafafa', borderRadius: 16,
-                                    padding: '0 16px', height: 56, border: '1px solid #f3f4f6',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                }}>
-                                    <div style={{
-                                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                                        background: '#f3f4f6', border: '1.5px solid #e5e7eb', color: '#9ca3af',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    }}>
-                                        <span style={{ fontSize: 11, fontWeight: 700 }}>3</span>
-                                    </div>
-                                    <span style={{ fontSize: 14, fontWeight: 500, color: '#9ca3af' }}>Access dashboard</span>
-                                </div>
-
                                 {displayError && (
-                                    <p style={{ fontSize: 13, color: '#ef4444', paddingLeft: 4, fontWeight: 500, marginTop: 4 }}>⚠ {displayError}</p>
+                                    <p className="text-[13px] text-red-500 font-medium px-1">⚠ {displayError}</p>
                                 )}
 
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    style={{
-                                        marginTop: 8, background: '#09090b', color: '#ffffff',
-                                        borderRadius: 14, height: 52, fontSize: 14, fontWeight: 700,
-                                        letterSpacing: '0.01em', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                        fontFamily: 'Inter, sans-serif', opacity: loading ? 0.7 : 1,
-                                        transition: 'all 0.15s',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                                    }}
+                                    className="w-full h-14 mt-2 bg-[#09090b] text-white rounded-2xl font-bold text-sm tracking-wide flex items-center justify-center gap-2 hover:bg-neutral-800 transition-all shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+                                    style={{ fontFamily: 'Inter, sans-serif' }}
                                 >
                                     {loading
                                         ? <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
-                                        : 'Continue →'
+                                        : 'Continue'
                                     }
                                 </button>
                             </form>
@@ -191,30 +135,8 @@ export default function LoginScreen() {
                                 We sent a 6-digit code to <strong style={{ color: '#111827', fontWeight: 700 }}>{email}</strong>
                             </p>
 
-                            <form onSubmit={handleVerifyOtp} className="flex flex-col gap-3">
-                                {/* Done step 1 */}
-                                <div style={{
-                                    background: '#fafafa', borderRadius: 16,
-                                    padding: '0 16px', height: 56, border: '1px solid #f3f4f6',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                }}>
-                                    <div style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, background: '#e5e7eb', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ fontSize: 11, fontWeight: 800 }}>✓</span>
-                                    </div>
-                                    <span style={{ fontSize: 14, fontWeight: 600, color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
-                                </div>
-
-                                {/* Active step 2 — OTP */}
-                                <div style={{
-                                    background: '#ffffff', borderRadius: 16,
-                                    padding: '0 16px', height: 56,
-                                    border: '1.5px solid #e5e7eb',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                    boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-                                }}>
-                                    <div style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, background: '#09090b', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ fontSize: 11, fontWeight: 800 }}>2</span>
-                                    </div>
+                            <form onSubmit={handleVerifyOtp} className="flex flex-col gap-4">
+                                <div className="relative">
                                     <input
                                         type="text"
                                         inputMode="numeric"
@@ -223,57 +145,29 @@ export default function LoginScreen() {
                                         placeholder="Enter 6-digit code"
                                         maxLength={6}
                                         autoFocus
-                                        style={{
-                                            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                                            fontSize: 14, fontWeight: 700, color: '#09090b',
-                                            letterSpacing: otp ? '0.3em' : 'normal',
-                                            fontFamily: 'Inter, sans-serif',
-                                        }}
+                                        className="w-full h-14 px-5 bg-[#fafafa] border border-gray-200 rounded-2xl outline-none focus:border-black focus:bg-white focus:ring-1 focus:ring-black transition-all text-sm font-bold text-black tracking-[0.3em] text-center shadow-[0_2px_4px_rgba(0,0,0,0.02)]"
+                                        style={{ fontFamily: 'Inter, sans-serif' }}
                                     />
                                 </div>
 
-                                {/* Dim step 3 */}
-                                <div style={{
-                                    background: '#fafafa', borderRadius: 16,
-                                    padding: '0 16px', height: 56, border: '1px solid #f3f4f6',
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                }}>
-                                    <div style={{
-                                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                                        background: '#f3f4f6', border: '1.5px solid #e5e7eb', color: '#9ca3af',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    }}>
-                                        <span style={{ fontSize: 11, fontWeight: 700 }}>3</span>
-                                    </div>
-                                    <span style={{ fontSize: 14, fontWeight: 500, color: '#9ca3af' }}>Access dashboard</span>
-                                </div>
-
-                                {displayError && <p style={{ fontSize: 13, color: '#ef4444', paddingLeft: 4, fontWeight: 500, marginTop: 4 }}>⚠ {displayError}</p>}
-                                {success && !displayError && <p style={{ fontSize: 13, color: '#10b981', paddingLeft: 4, fontWeight: 600, marginTop: 4 }}>✓ Verified — redirecting…</p>}
+                                {displayError && <p className="text-[13px] text-red-500 font-medium px-1">⚠ {displayError}</p>}
+                                {success && !displayError && <p className="text-[13px] text-emerald-500 font-semibold px-1">✓ Verified — redirecting…</p>}
 
                                 <button
                                     type="submit"
                                     disabled={loading || otp.length < 4}
-                                    style={{
-                                        marginTop: 8, background: '#09090b', color: '#ffffff',
-                                        borderRadius: 14, height: 52, fontSize: 14, fontWeight: 700,
-                                        letterSpacing: '0.01em', border: 'none',
-                                        cursor: (loading || otp.length < 4) ? 'not-allowed' : 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                        fontFamily: 'Inter, sans-serif',
-                                        opacity: (loading || otp.length < 4) ? 0.5 : 1,
-                                        transition: 'all 0.15s',
-                                        boxShadow: (loading || otp.length < 4) ? 'none' : '0 4px 12px rgba(0,0,0,0.1)'
-                                    }}
+                                    className="w-full h-14 mt-2 bg-[#09090b] text-white rounded-2xl font-bold text-sm tracking-wide flex items-center justify-center gap-2 hover:bg-neutral-800 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                                    style={{ fontFamily: 'Inter, sans-serif' }}
                                 >
                                     {loading
                                         ? <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
-                                        : 'Verify & Enter →'
+                                        : 'Verify & Enter'
                                     }
                                 </button>
 
                                 <button type="button" onClick={handleSendOtp} disabled={loading}
-                                    style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', paddingTop: 8, fontFamily: 'Inter, sans-serif' }}>
+                                    className="pt-2 text-[13px] text-gray-500 hover:text-gray-900 font-semibold transition-colors bg-transparent border-none cursor-pointer text-center w-full"
+                                    style={{ fontFamily: 'Inter, sans-serif' }}>
                                     Didn't receive it? Resend
                                 </button>
                             </form>

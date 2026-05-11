@@ -11,6 +11,7 @@ import DigitalPreloader from './components/DigitalPreloader'
 import XNFTDevPreview from './components/XNFTDevPreview'
 import SendPageWrapper from './components/SendPageWrapper'
 import ReceivePageWrapper from './components/ReceivePageWrapper'
+import VaultPasskeyGuard from './components/VaultPasskeyGuard'
 import './App.css'
 
 function App() {
@@ -24,22 +25,22 @@ function App() {
     <Routes>
       <Route path="/" element={!authenticated ? <LoginScreen /> : <Navigate to="/dashboard" />} />
 
-      <Route path="/dashboard" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/dashboard" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<CryptoDashboard />} />
       </Route>
-      <Route path="/send" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/send" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<SendPageWrapper />} />
       </Route>
-      <Route path="/receive" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/receive" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<ReceivePageWrapper />} />
       </Route>
-      <Route path="/zeroalpha" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/zeroalpha" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<ZeroAlphaDashboard />} />
       </Route>
-      <Route path="/portfolio" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/portfolio" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<PortfolioWrapper />} />
       </Route>
-      <Route path="/settings" element={authenticated ? <DashboardLayout /> : <Navigate to="/" />}>
+      <Route path="/settings" element={authenticated ? <VaultPasskeyGuard><DashboardLayout /></VaultPasskeyGuard> : <Navigate to="/" />}>
         <Route index element={<Settings />} />
       </Route>
 

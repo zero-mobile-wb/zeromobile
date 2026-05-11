@@ -23,6 +23,7 @@
     "@tailwindcss/vite": "^4.1.17",
     "baseline-browser-mapping": "^2.9.14",
     "bs58": "^6.0.0",
+    "crypto-js": "^4.2.0",
     "dotenv": "^17.2.3",
     "html5-qrcode": "^2.3.8",
     "qrcode.react": "^4.2.0",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/crypto-js": "^4.2.2",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",

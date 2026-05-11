@@ -236,7 +236,7 @@ function SwapForm({ balances, allTokens, walletAddress }: { balances: TokenBalan
       )}
 
       {/* ── Swap Card ── */}
-      <div className="rounded-3xl bg-white border border-[#e5e7eb] p-6 md:p-7 shadow-sm relative overflow-hidden">
+      <div className="rounded-2xl bg-white border border-[#e5e7eb] p-6 md:p-7 shadow-sm relative overflow-hidden">
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-black/[0.015] blur-[50px] rounded-full pointer-events-none" />
 
         {/* Header */}
@@ -355,40 +355,6 @@ function SwapForm({ balances, allTokens, walletAddress }: { balances: TokenBalan
         </button>
       </div>
     </>
-  )
-}
-
-// ─── Component: Stats Bar ─────────────────────────────────────────────────
-function StatsBar({ transactions }: { transactions: Transaction[] }) {
-  const barHeights = useMemo(() => {
-    if (transactions.length === 0) return Array(10).fill(20)
-    const vals = transactions.slice(0, 10).map(tx => tx.amount || 0)
-    const max = Math.max(...vals, 0.001)
-    return vals.map(v => Math.max(15, (v / max) * 100))
-  }, [transactions])
-
-  return (
-    <div className="rounded-3xl bg-white border border-[#e5e7eb] p-6 space-y-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Activity Volume</p>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#09090b]">
-          <Activity size={10} className="text-white" />
-          <span className="text-[9px] font-bold text-white uppercase tracking-widest">By Date</span>
-        </div>
-      </div>
-
-      <div className="space-y-2 pt-2">
-        <div className="flex items-end gap-2 h-24">
-          {barHeights.map((h, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-sm transition-all duration-1000 bg-[#09090b]"
-              style={{ height: `${h}%`, opacity: 0.15 + (h / 100) * 0.85 }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -574,13 +540,34 @@ export default function CryptoDashboard() {
     <div className="h-full px-5 md:px-8 py-6 md:py-8 overflow-y-auto bg-white">
       <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto min-h-full">
 
-        {/* ════════════════ LEFT 60%: Header, Actions, Stats, History ════════════════ */}
-        <div className="flex-1 lg:basis-[60%] space-y-6">
+        {/* ════════════════ LEFT COLUMN: Balance, Actions, Assets ════════════════ */}
+        <div className="flex-1 lg:basis-[60%] flex flex-col gap-6">
 
-          {/* Header */}
-          <div className="mb-2">
-            <h1 className="text-3xl font-black text-black tracking-tight leading-tight">Welcome back,<br /> {firstName}</h1>
-            <p className="text-sm font-medium text-[#6b7280] mt-2 tracking-wide">Manage your crypto effortlessly</p>
+          {/* Consolidated Enterprise Header/Balance Card */}
+          <div className="rounded-2xl bg-[#09090b] text-white p-8 relative overflow-hidden shadow-xl">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-white opacity-[0.03] blur-[100px] rounded-full pointer-events-none" />
+            <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8 gap-y-6">
+              <div>
+                <div className="text-[10px] font-bold text-[rgba(255,255,255,0.5)] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                  <span>TOTAL BALANCE</span>
+                </div>
+                {loadingTokens && totalUsdBalance === 0 ? (
+                  <div className="h-12 w-64 bg-[rgba(255,255,255,0.1)] animate-pulse rounded-2xl" />
+                ) : (
+                  <h2 className="text-5xl md:text-6xl font-medium font-mono tracking-tight leading-none">
+                    ${totalUsdBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h2>
+                )}
+                {error && <p className="mt-4 text-xs font-bold text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>}
+              </div>
+
+              {/* Minimal Welcome Details nested elegantly inside the balance box */}
+              <div className="md:text-right border-t border-white/10 md:border-t-0 pt-4 md:pt-0">
+                <p className="text-[10px] font-black text-[rgba(255,255,255,0.4)] uppercase tracking-widest mb-1">Session Owner</p>
+                <p className="text-sm font-semibold text-white truncate max-w-[150px] md:max-w-none">{firstName}</p>
+              </div>
+            </div>
           </div>
 
           {/* Interaction Buttons Row */}
@@ -589,142 +576,117 @@ export default function CryptoDashboard() {
               { icon: <Send size={20} />, label: 'Send', action: () => setSubView('send') },
               { icon: <QrCode size={20} />, label: 'Receive', action: () => setSubView('receive') },
               { icon: <ArrowLeftRight size={20} />, label: 'Swap', disabled: true },
-              { icon: <RefreshCw size={20} />, label: 'Refresh', action: handleRefresh, loading: loadingTokens || loadingTransactions },
+              { icon: <RefreshCw size={20} />, label: 'Sync', action: handleRefresh, loading: loadingTokens || loadingTransactions },
             ].map((item, idx) => (
               <button
                 key={idx}
                 onClick={item.action}
                 disabled={item.disabled || item.loading}
-                className="flex flex-col items-center justify-center p-4 bg-white border border-[#e5e7eb] rounded-xl hover:shadow-md transition-all duration-200 group disabled:opacity-40 active:scale-95 shadow-sm"
+                className="flex flex-col items-center justify-center p-4 bg-[#fafafa] border border-[#e5e7eb] rounded-2xl hover:bg-white hover:border-[#09090b]/20 hover:shadow-md transition-all duration-300 group disabled:opacity-40 active:scale-95 text-center"
               >
-                <div className={`text-black mb-2 ${item.loading ? 'animate-spin' : 'group-hover:-translate-y-1 transition-transform'}`}>
+                <div className={`text-[#09090b] mb-2 ${item.loading ? 'animate-spin' : 'group-hover:-translate-y-1 transition-transform'}`}>
                   {item.icon}
                 </div>
-                <span className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider">{item.label}</span>
+                <span className="text-[10px] font-black text-[#6b7280] uppercase tracking-[0.15em] shrink-0">{item.label}</span>
               </button>
             ))}
           </div>
 
-          {/* Statistics Bar */}
-          <StatsBar transactions={transactions} />
-
-          {/* Transaction History */}
-          <div className="rounded-3xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm">
-            <div className="px-6 py-5 border-b border-[#e5e7eb] flex items-center justify-between">
-              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Transaction History</p>
-              <button className="text-[10px] font-bold text-[#09090b] uppercase tracking-widest hover:underline pointer-events-none opacity-50">View All</button>
+          {/* Assets Box (Moved to Main Column) */}
+          <div className="rounded-2xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm flex-1 flex flex-col min-h-[300px]">
+            <div className="px-7 py-5 border-b border-[#e5e7eb] flex items-center justify-between bg-[#fafafa]">
+              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Portfolio Assets</p>
+              <span className="text-[10px] font-bold text-[#09090b] bg-white border border-[#e5e7eb] px-2.5 py-1 rounded-lg shadow-sm">{tokenBalances.length}</span>
             </div>
-
-            {loadingTransactions ? (
-              <div className="p-10 flex justify-center"><svg className="animate-spin w-5 h-5 text-[#09090b]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg></div>
-            ) : transactions.length === 0 ? (
-              <div className="p-10 text-center text-[#9ca3af] text-sm font-medium">No transactions found</div>
-            ) : (
-              <div className="divide-y divide-[#e5e7eb] max-h-80 overflow-y-auto">
-                {transactions.map(tx => (
-                  <a
-                    key={tx.signature}
-                    href={`https://explorer.solana.com/tx/${tx.signature}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors group"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${tx.type === 'receive' ? 'bg-[#f0fdf4] border-[#bbf7d0]' :
-                        tx.type === 'send' ? 'bg-[#fef2f2] border-[#fecaca]' :
-                          'bg-[#f8fafc] border-[#e2e8f0]'
-                        }`}>
-                        {tx.type === 'receive' ? <ArrowDownLeft className="w-4 h-4 text-[#16a34a]" />
-                          : tx.type === 'send' ? <ArrowUpRight className="w-4 h-4 text-[#dc2626]" />
-                            : <ArrowLeftRight className="w-4 h-4 text-[#475569]" />}
+            <div className="flex-1 overflow-y-auto">
+              {loadingTokens ? (
+                <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">Synchronizing Ledger…</div>
+              ) : tokenBalances.length === 0 ? (
+                <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">No assets held in this wallet.</div>
+              ) : (
+                <div className="divide-y divide-[#e5e7eb]">
+                  {tokenBalances.map(tb => (
+                    <div
+                      key={tb.mint}
+                      onClick={() => setSubView('send')}
+                      className="flex items-center justify-between px-7 py-4 hover:bg-[#fafafa] transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-4">
+                        {tb.metadata?.logoURI
+                          ? <img src={tb.metadata.logoURI} className="w-10 h-10 rounded-full bg-white shadow-sm object-cover border border-[#e5e7eb]" />
+                          : <div className="w-10 h-10 rounded-full bg-[#f3f4f6] flex items-center justify-center text-xs font-black text-[#6b7280] border border-[#e5e7eb]">{tb.metadata?.symbol?.slice(0, 2) || '?'}</div>
+                        }
+                        <div>
+                          <p className="text-sm font-bold text-[#09090b]">{tb.metadata?.symbol || 'Unknown'}</p>
+                          <p className="text-[11px] font-medium text-[#9ca3af] mt-0.5">{tb.metadata?.name}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-[#09090b]">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.tokenSymbol || ''}</p>
-                        {tx.amount !== undefined && (
-                          <p className="text-xs font-mono font-medium text-[#6b7280] mt-0.5">
-                            {tx.type === 'receive' ? '+' : '-'}{tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {tx.tokenSymbol || ''}
-                          </p>
-                        )}
+                      <div className="text-right">
+                        <p className="text-sm font-black font-mono text-[#09090b]">{tb.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                        <p className="text-[11px] font-bold text-[#6b7280] mt-0.5">${(tb.usdValue || 0).toFixed(2)}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-semibold text-[#09090b] group-hover:text-blue-600 transition-colors uppercase tracking-tight">View</p>
-                      <p className="text-[10px] font-bold text-[#9ca3af] mt-1 uppercase tracking-widest">{new Date(tx.timestamp * 1000).toLocaleDateString()}</p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-
         </div>
 
-
-        {/* ════════════════ RIGHT 40%: Balance & Swap ════════════════ */}
-        <div className="lg:basis-[40%] space-y-6">
-
-          {/* Balance Card with border radius above Swap */}
-          <div className="rounded-3xl bg-[#09090b] text-white p-7 relative overflow-hidden shadow-xl">
-            {/* Elegant Background Gradients */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 blur-[100px] rounded-full pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col items-start">
-              <p className="text-[10px] font-bold text-[rgba(255,255,255,0.5)] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                Live Balance
-              </p>
-
-              {loadingTokens && totalUsdBalance === 0 ? (
-                <div className="h-12 w-48 bg-[rgba(255,255,255,0.1)] animate-pulse rounded-2xl mb-4" />
-              ) : (
-                <h2 className="text-5xl font-black font-mono tracking-tighter mb-4 leading-none">
-                  ${totalUsdBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </h2>
-              )}
-
-              {error && <p className="mt-4 text-xs font-bold text-red-400 bg-red-400/10 px-3 py-2 rounded-lg w-full">{error}</p>}
-            </div>
-          </div>
+        {/* ════════════════ RIGHT COLUMN: Swap & Transactions ════════════════ */}
+        <div className="lg:basis-[40%] flex flex-col gap-6">
 
           {/* Swap Form Component */}
           <SwapForm balances={tokenBalances} allTokens={tokenMetadata} walletAddress={walletAddress} />
 
-          {/* Assets Box (Moved here to fill space if desired, or left off? Standard is to have it) */}
-          <div className="rounded-3xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm">
-            <div className="px-6 py-5 border-b border-[#e5e7eb] flex items-center justify-between">
-              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Your Assets</p>
-              <span className="text-[10px] font-bold text-[#09090b] bg-[#f3f4f6] px-2.5 py-1 rounded-full">{tokenBalances.length}</span>
+          {/* Transaction History */}
+          <div className="rounded-2xl bg-white border border-[#e5e7eb] overflow-hidden shadow-sm flex-1 flex flex-col min-h-[300px]">
+            <div className="px-7 py-5 border-b border-[#e5e7eb] flex items-center justify-between bg-[#fafafa]">
+              <p className="text-[11px] font-black text-[#6b7280] uppercase tracking-[0.2em]">Live Activity</p>
             </div>
-            {loadingTokens ? (
-              <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">Loading…</div>
-            ) : tokenBalances.length === 0 ? (
-              <div className="p-8 text-center text-[#9ca3af] text-sm font-medium">No assets found.</div>
-            ) : (
-              <div className="divide-y divide-[#e5e7eb]">
-                {tokenBalances.map(tb => (
-                  <div
-                    key={tb.mint}
-                    onClick={() => setSubView('send')}
-                    className="flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-4">
-                      {tb.metadata?.logoURI
-                        ? <img src={tb.metadata.logoURI} className="w-10 h-10 rounded-full bg-[#f3f4f6] object-cover border border-[#e5e7eb]" />
-                        : <div className="w-10 h-10 rounded-full bg-[#f3f4f6] flex items-center justify-center text-xs font-black text-[#6b7280]">{tb.metadata?.symbol?.slice(0, 2) || '?'}</div>
-                      }
-                      <div>
-                        <p className="text-sm font-bold text-[#09090b]">{tb.metadata?.symbol || 'Unknown'}</p>
-                        <p className="text-xs font-medium text-[#6b7280]">{tb.metadata?.name}</p>
+
+            <div className="flex-1 overflow-y-auto bg-white">
+              {loadingTransactions ? (
+                <div className="p-10 flex justify-center"><svg className="animate-spin w-5 h-5 text-[#09090b]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg></div>
+              ) : transactions.length === 0 ? (
+                <div className="p-10 text-center text-[#9ca3af] text-sm font-medium">No transaction records</div>
+              ) : (
+                <div className="divide-y divide-[#e5e7eb]">
+                  {transactions.map(tx => (
+                    <a
+                      key={tx.signature}
+                      href={`https://explorer.solana.com/tx/${tx.signature}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between px-7 py-4 hover:bg-[#fafafa] transition-colors group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shadow-sm ${tx.type === 'receive' ? 'bg-[#f0fdf4] border-[#bbf7d0]' :
+                          tx.type === 'send' ? 'bg-[#fef2f2] border-[#fecaca]' :
+                            'bg-[#f8fafc] border-[#e2e8f0]'
+                          }`}>
+                          {tx.type === 'receive' ? <ArrowDownLeft className="w-3.5 h-3.5 text-[#16a34a]" />
+                            : tx.type === 'send' ? <ArrowUpRight className="w-3.5 h-3.5 text-[#dc2626]" />
+                              : <ArrowLeftRight className="w-3.5 h-3.5 text-[#475569]" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-[#09090b]">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.tokenSymbol || ''}</p>
+                          {tx.amount !== undefined && (
+                            <p className="text-[11px] font-mono font-medium text-[#6b7280] mt-0.5">
+                              {tx.type === 'receive' ? '+' : '-'}{tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {tx.tokenSymbol || ''}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black font-mono text-[#09090b]">{tb.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-                      <p className="text-[11px] font-bold text-[#6b7280] mt-0.5">${(tb.usdValue || 0).toFixed(2)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-[#09090b] opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest hidden sm:block">Explore ↗</p>
+                        <p className="text-[9px] font-black text-[#9ca3af] mt-1 sm:mt-1.5 uppercase tracking-wider">{new Date(tx.timestamp * 1000).toLocaleDateString()}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
         </div>
